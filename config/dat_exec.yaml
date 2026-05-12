@@ -147,14 +147,14 @@ plugins:
         exec: $reject_ad
       - exec: $cache_wan
       - exec: jump has_resp_main
-      - matches: "qname $geosite_cn"
-        exec: $query_cn
+      - matches: "qname $geosite_gfw"
+        exec: $query_nocn
       - exec: jump has_resp_main
       - matches: "qname $geosite_location_not_cn"
         exec: $query_nocn
       - exec: jump has_resp_main
-      - matches: "qname $geosite_gfw"
-        exec: $query_nocn
+      - matches: "qname $geosite_cn"
+        exec: $query_cn
       - exec: jump has_resp_main
       - exec: $no_ecs
       - exec: $query_nocn
