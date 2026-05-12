@@ -1,0 +1,5 @@
+# mosdns SoC 交付物
+.env
+cache/
+rules/dat/geoip.dat
+rules/dat/geosite.dat

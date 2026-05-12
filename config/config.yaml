@@ -1,0 +1,24 @@
+# ============================================================
+# config.yaml — mosdns v5 主配置
+# ============================================================
+
+log:
+  level: debug
+
+api:
+  http: "0.0.0.0:8080"
+
+include:
+  - /etc/mosdns/dns.yaml
+  - /etc/mosdns/dat_exec.yaml
+
+plugins:
+  - type: udp_server
+    args:
+      entry: sequence
+      listen: :53
+
+  - type: tcp_server
+    args:
+      entry: sequence
+      listen: :53

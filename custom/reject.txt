@@ -1,0 +1,4 @@
+# 自定义拦截域名（每行一个）
+# 示例:
+# ads.google.com
+# bad-ad-network.com
