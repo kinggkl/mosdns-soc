@@ -20,9 +20,14 @@ DNS Request → :53
   └─ main_sequence (主流程)
       ad → reject NXDOMAIN (µs 级)
       cache_wan (131K) → hit → accept
-      cn  → ECS → dns_cn(Ali→DNSPod) → resp_ip 反污染
-      !cn / gfw → dns_nocn(Google→Cloudflare) → resp_ip 反污染
+      gfw → dns_nocn(Google→Cloudflare) → resp_ip 反污染     ← 优先匹配
+      !cn → dns_nocn(Google→Cloudflare) → resp_ip 反污染
+      cn  → ECS → dns_cn(Ali→DNSPod) → resp_ip 反污染        ← 纯国内域名
       fallthrough → 优先无污染上游
+
+> ⚠️ 匹配顺序至关重要：`gfw/!cn` 必须在 `cn` 之前。
+> Loyalsoldier 规则集中有 **158 个域名同时存在于国内和非国内列表**（如 Google 服务、米哈游游戏、阿里云等），
+> 若 `cn` 优先则会误入国内 DNS，存在污染风险。当前顺序已修复。
 ```
 
 ## 特性
