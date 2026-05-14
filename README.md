@@ -1,107 +1,152 @@
-# mosdns SoC — 标准化 DNS 分流部署
+# mosdns SoC — Standardized Split-DNS Deployment
 
-基于 [mosdns v5.3.4](https://github.com/IrineSistiana/mosdns) 的标准化 Docker Compose 部署方案，可实现 **DNS 分流 + 反污染 + 广告拦截 + ECS 优化**。
+Production-ready [mosdns v5.3.4](https://github.com/IrineSistiana/mosdns) deployment with Docker Compose — **split-DNS + anti-pollution + ad blocking + ECS optimization + protocol redundancy**.
 
-## 快速部署
+[中文文档](README_CN.md)
+
+## Quick Start
 
 ```bash
 git clone https://github.com/kinggkl/mosdns-soc.git
 cd mosdns-soc
-cp .env.example .env          # 编辑 .env 填入 ECS_PRESET（可选）
-make deploy                   # 自动下载规则 + 构建 + 启动
+cp .env.example .env              # Edit .env to set ECS_PRESET (optional)
+make deploy                       # Download rules + build + start
 ```
 
-## 分流架构
+## Split-DNS Architecture
 
 ```
 DNS Request → :53
-  ├─ pre_sequence (预处理)
-  │   qtype65 → reject | 无效域名 → reject | PTR/ANY → 国外 | private IP → LAN
-  └─ main_sequence (主流程)
-      ad → reject NXDOMAIN (µs 级)
-      cache_wan (131K) → hit → accept
-      gfw → dns_nocn(Google→Cloudflare) → resp_ip 反污染     ← 优先匹配
-      !cn → dns_nocn(Google→Cloudflare) → resp_ip 反污染
-      cn  → ECS → dns_cn(Ali→DNSPod) → resp_ip 反污染        ← 纯国内域名
-      fallthrough → 优先无污染上游
+  ├─ pre_sequence (preprocessing)
+  │   qtype65 → reject | invalid qname → reject | PTR/ANY → foreign | private IP → LAN
+  └─ main_sequence (routing)
+      ad → reject NXDOMAIN (µs-level)
+      cache_wan (128K) → hit → accept
+      gfw → dns_nocn(Cloudflare→Google) → resp_ip anti-pollution      ← priority match
+      !cn → dns_nocn(Cloudflare→Google) → resp_ip anti-pollution
+      cn  → ECS → dns_cn(Ali→DNSPod) → resp_ip anti-pollution         ← domestic only
+      fallthrough → prefer clean upstream
 
-> ⚠️ 匹配顺序至关重要：`gfw/!cn` 必须在 `cn` 之前。
-> Loyalsoldier 规则集中有 **158 个域名同时存在于国内和非国内列表**（如 Google 服务、米哈游游戏、阿里云等），
-> 若 `cn` 优先则会误入国内 DNS，存在污染风险。当前顺序已修复。
-```
+> ⚠️ Match order is critical: `gfw/!cn` MUST precede `cn`.
+> Loyalsoldier rules have 158 overlapping domains across domestic and non-domestic lists
+> (e.g., Google services, Mihoyo games, Alibaba Cloud). CN-first order risks pollution.
 
-## 特性
+## Upstream Design (v2026-05-13)
 
-| 特性 | 实现 |
-|------|------|
-| 反污染 | `resp_ip` 国内/国外 IP 校验 + `drop_resp` |
-| ECS 优化 | 可配置 `ECS_PRESET`（`.env` 控制） |
-| 广告拦截 | 173K 规则 (`geosite_category-ads-all`) |
-| 多上游并发 | DoH+DoT `concurrent:3` (v4 only) |
-| 双缓存 | LAN 8K + WAN 128K，lazy TTL 86400s |
-| TTL 分级 | pre=3600s / main=300s |
-| 配置拆分 | `include` 3 文件 |
+| Tier | Provider | Role | Protocols | Avg Latency |
+|------|----------|------|-----------|:-----------:|
+| Foreign Primary | Cloudflare | DoH + DoT | `https://` `tls://` | **7ms** |
+| Foreign Secondary | Google | DoH + DoT | `https://` `tls://` | 17ms |
+| Domestic Primary | AliDNS | DoH + DoT | `https://` `tls://` | — |
+| Domestic Secondary | DNSPod | DoH + DoT | `https://` `tls://` | — |
 
-## 环境变量 (`.env`)
+**Design decisions (2026-05-13):**
+- **`dial_addr` removed** — DNS domains already resolve to multiple IPs naturally (`cloudflare-dns.com` → 4 IPs). Forcing `dial_addr` to anycast IPs for DoH causes incorrect responses (port 443 does not serve the DoH endpoint).
+- **Cloudflare primary** — 2.4x lower latency than Google on this network (7ms vs 17ms avg).
+- **Protocol redundancy** — DoH + DoT per upstream. DNS-over-QUIC (DoQ) excluded: mainstream providers do not support it yet. HTTP/3 evaluated but offers no latency benefit over HTTP/2 on this network.
+- **Single `addr` per protocol** — unnecessary duplication removed. DNS resolution already provides multi-IP diversity.
 
-| 变量 | 默认 | 说明 |
-|------|------|------|
-| `ECS_PRESET` | (空) | 国内 ECS 预设 IP，留空禁用 |
-| `LOG_LEVEL` | `debug` | 日志级别 |
-| `CACHE_WAN_SIZE` | `131072` | WAN 缓存大小 |
+## Features
 
-## 运维命令
+| Feature | Implementation |
+|---------|---------------|
+| Anti-pollution | `resp_ip` domestic/foreign IP verification + `drop_resp` |
+| ECS optimization | Configurable `ECS_PRESET` (via `.env`) |
+| Ad blocking | 173K rules (`geosite_category-ads-all`) |
+| Multi-upstream | DoH + DoT `concurrent:3` (IPv4 only) |
+| Dual cache | LAN 8K + WAN 128K, lazy TTL 86400s |
+| TTL grading | pre=3600s / main=300s |
+| Config split | 3-file `include` architecture |
+
+## Environment Variables (`.env`)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ECS_PRESET` | (empty) | Domestic ECS preset IP, leave empty to disable |
+| `LOG_LEVEL` | `debug` | Log level |
+| `CACHE_WAN_SIZE` | `131072` | WAN cache size |
+
+## Operations
 
 ```bash
-make test           # 功能测试
-make update-rules   # 更新规则文件并重建
-make clean          # 停止并清理
+make test           # Functional tests
+make update-rules   # Update rule files and rebuild
+make clean          # Stop and clean up
 
-# 查看日志
+# View logs
 docker logs mosdns --tail 50 -f
 
-# 压测 (需 dnsperf)
+# Stress test (requires dnsperf)
 make bench
 ```
 
-## 目录结构
+## Directory Structure
 
 ```
 mosdns-soc/
-├── .env.example          # 环境变量模板
-├── docker-compose.yml    # Docker Compose
-├── Dockerfile            # 镜像构建
-├── entrypoint.sh         # envsubst + crond + start
-├── Makefile              # 快捷命令
+├── .env.example              # Environment template
+├── docker-compose.yml        # Docker Compose
+├── Dockerfile                # Image build
+├── entrypoint.sh             # envsubst + crond + start
+├── Makefile                  # Shortcut commands
 ├── config/
-│   ├── config.yaml       # 主配置
-│   ├── dns.yaml.tpl      # 上游+ECS 模板
-│   └── dat_exec.yaml     # 数据源+缓存+分流
+│   ├── config.yaml           # Main config
+│   ├── dns.yaml.tpl          # Upstream + ECS template
+│   └── dat_exec.yaml         # Data + cache + routing
 ├── rules/
-│   ├── update.sh         # 规则更新脚本
-│   └── dat/              # 规则文件 (6 分类)
+│   ├── update.sh             # Rule update script
+│   └── dat/                  # Rule files (6 categories)
 ├── scripts/
-│   ├── deploy.sh         # 一键部署
-│   └── test.sh           # 功能测试
+│   ├── deploy.sh             # One-click deploy
+│   └── test.sh               # Functional tests
+├── benchmarks/
+│   └── 2026-05-13.md         # Latest benchmark results
 └── custom/
-    ├── reject.txt        # 自定义拦截
-    └── direct.txt        # 自定义直连
+    ├── reject.txt             # Custom blocklist
+    └── direct.txt             # Custom allowlist
 ```
 
-## 依赖
+## Prerequisites
 
 - Docker 24+ / Docker Compose 2+
-- 端口 53/udp + 53/tcp 可用
-- 国际网络环境（需访问 Google/AliDNS/Cloudflare DoH）
+- Port 53/udp + 53/tcp available
+- International network access (Google/AliDNS/Cloudflare DoH reachable)
 
-## 规则更新
+## Rule Updates
 
-规则来自 [Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat)，通过 v2dat 解包 6 个分类。定期更新：
+Rules sourced from [Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat), unpacked via v2dat into 6 categories. Update periodically:
 
 ```bash
 make update-rules
 ```
 
-## 许可证
+## Benchmark (2026-05-13)
+
+| Metric | Value |
+|--------|-------|
+| QPS ceiling | ~30,000/s |
+| Average latency | 3ms (cache-hit: 30µs) |
+| Ad block latency | ~20µs |
+| CPU utilization | <1% (post-warmup) |
+| Memory (pre-warmup) | ~70MB |
+| Memory (5.8M queries) | ~130MB |
+
+### Protocol Latency Comparison (Cloudflare DNS)
+
+| Protocol | baidu.com | google.com | facebook.com | Avg |
+|----------|:---:|:---:|:---:|:---:|
+| DoT (`tls://`) | 6ms | 8ms | 6ms | **7ms** |
+| HTTP/2 (`https://`) | 34ms | 36ms | 37ms | 36ms |
+| HTTP/3 (`h3://`) | 42ms | 37ms | 37ms | 39ms |
+
+### Anti-Pollution Verification
+
+| Domain | mosdns | ASN | Clean? |
+|--------|--------|-----|:---:|
+| facebook.com | 57.145.12.1 | AS32934 Meta (HK CDN) | ✅ |
+| twitter.com | 162.159.140.229 | AS13335 Cloudflare | ✅ |
+| google.com | 142.250.199.206 | AS15169 Google (US) | ✅ |
+
+## License
 
 MIT

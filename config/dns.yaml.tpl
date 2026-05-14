@@ -1,81 +1,58 @@
 # ============================================================
 # dns.yaml.tpl — 上游 DNS / ECS / Reject（模板，由 entrypoint envsubst 渲染）
 # DoH + DoT 并发，仅 IPv4
+# 2026-05-13: 优化 — 去 dial_addr，Cloudflare 主/Google 备
 # ============================================================
 
 plugins:
-  # ── Google DoH + DoT（v4 多地址并发）──
-  - tag: google
-    type: forward
-    args:
-      concurrent: 3
-      upstreams:
-        - addr: "https://dns.google/dns-query"
-          dial_addr: "8.8.8.8"
-        - addr: "https://dns.google/dns-query"
-          dial_addr: "8.8.4.4"
-        - addr: "tls://dns.google"
-          dial_addr: "8.8.8.8"
-          enable_pipeline: true
-        - addr: "tls://dns.google"
-          dial_addr: "8.8.4.4"
-          enable_pipeline: true
-
-  # ── Cloudflare DoH + DoT（v4，备用）──
+  # ── Cloudflare DoH + DoT（主，avg 7ms）──
   - tag: cloudflare
     type: forward
     args:
       concurrent: 3
       upstreams:
         - addr: "https://cloudflare-dns.com/dns-query"
-          dial_addr: "1.1.1.1"
-        - addr: "https://cloudflare-dns.com/dns-query"
-          dial_addr: "1.0.0.1"
         - addr: "tls://1dot1dot1dot1.cloudflare-dns.com"
-          dial_addr: "1.1.1.1"
-          enable_pipeline: true
-        - addr: "tls://1dot1dot1dot1.cloudflare-dns.com"
-          dial_addr: "1.0.0.1"
           enable_pipeline: true
 
-  # ── 国外回退：Google → Cloudflare ──
+  # ── Google DoH + DoT（备，avg 17ms）──
+  - tag: google
+    type: forward
+    args:
+      concurrent: 3
+      upstreams:
+        - addr: "https://dns.google/dns-query"
+        - addr: "tls://dns.google"
+          enable_pipeline: true
+
+  # ── 国外回退：Cloudflare → Google ──
   - tag: dns_nocn
     type: fallback
     args:
-      primary: google
-      secondary: cloudflare
+      primary: cloudflare
+      secondary: google
       threshold: 500
       always_standby: true
 
-  # ── AliDNS DoH + DoT（v4）──
+  # ── AliDNS DoH + DoT（v4，国内主）──
   - tag: ali
     type: forward
     args:
       concurrent: 3
       upstreams:
         - addr: "https://dns.alidns.com/dns-query"
-          dial_addr: "223.5.5.5"
-        - addr: "https://dns.alidns.com/dns-query"
-          dial_addr: "223.6.6.6"
         - addr: "tls://dns.alidns.com"
-          dial_addr: "223.5.5.5"
-          enable_pipeline: true
-          insecure_skip_verify: true
-        - addr: "tls://dns.alidns.com"
-          dial_addr: "223.6.6.6"
           enable_pipeline: true
           insecure_skip_verify: true
 
-  # ── DNSPod DoH + DoT（v4，国内备用）──
+  # ── DNSPod DoH + DoT（v4，国内备）──
   - tag: dnspod
     type: forward
     args:
       concurrent: 3
       upstreams:
         - addr: "https://doh.pub/dns-query"
-          dial_addr: "120.53.53.53"
         - addr: "tls://dot.pub"
-          dial_addr: "1.12.12.12"
           enable_pipeline: true
 
   # ── 国内回退：AliDNS → DNSPod ──
