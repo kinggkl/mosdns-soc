@@ -1,6 +1,6 @@
 # ============================================================
-# mosdns v5 — Docker Compose 标准化部署
-# 配置: 复制 .env.example 为 .env 并修改
+# mosdns v5 — Docker Compose 部署 v2.1
+# 新增：规则自动更新（dat 卷改为读写）
 # ============================================================
 
 services:
@@ -8,19 +8,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: mosdns:v${MOSDNS_VERSION:-5.3.4}
+    image: mosdns:v5.3.4
     container_name: mosdns
     restart: always
     network_mode: host
-    environment:
-      - ECS_PRESET=${ECS_PRESET:-}
     volumes:
-      - ./config/config.yaml:/etc/mosdns/config.yaml:ro
-      - ./config/dat_exec.yaml:/etc/mosdns/dat_exec.yaml:ro
-      - ./config/dns.yaml.tpl:/etc/mosdns/dns.yaml.tpl:ro
-      - ./rules/dat:/etc/mosdns/dat:ro
-      - ./custom:/etc/mosdns/custom:ro
-      - ./cache:/etc/mosdns/cache
+      - ./config.yaml:/etc/mosdns/config.yaml:ro
+      - ./dat_exec.yaml:/etc/mosdns/dat_exec.yaml:ro
+      - ./dns.yaml:/etc/mosdns/dns.yaml:ro
+      - ./dat:/etc/mosdns/dat:rw
+      - ./cache:/etc/mosdns/cache:rw
     logging:
       driver: json-file
       options:

@@ -1,13 +1,24 @@
+# ============================================================
+# mosdns v5.3.4 Dockerfile — v2.1 (auto-update)
+# 新增：dcron + update-rules.sh 规则自动更新
+# 参考：Jasper-1024/mosdns_v5 + Loyalsoldier/v2ray-rules-dat
+# ============================================================
+
 FROM irinesistiana/mosdns:v5.3.4
-LABEL maintainer="mosdns-soc"
+LABEL maintainer="mosdns-v5"
 
-COPY config/config.yaml /etc/mosdns/config.yaml
-COPY config/dat_exec.yaml /etc/mosdns/dat_exec.yaml
-COPY config/dns.yaml.tpl /etc/mosdns/dns.yaml.tpl
-COPY entrypoint.sh /entrypoint.sh
-COPY rules/dat /etc/mosdns/dat
+# 安装 dcron（轻量 cron，~100KB）+ curl（下载规则文件）
+RUN apk add --no-cache dcron curl
 
-RUN chmod a+x /entrypoint.sh
+COPY ./config.yaml /etc/mosdns/config.yaml
+COPY ./dat_exec.yaml /etc/mosdns/dat_exec.yaml
+COPY ./dns.yaml /etc/mosdns/dns.yaml
+COPY ./entrypoint.sh /entrypoint.sh
+COPY ./update-rules.sh /usr/local/bin/update-rules.sh
+COPY ./crontab /etc/crontabs/root
+COPY ./dat /etc/mosdns/dat
+
+RUN chmod a+x /entrypoint.sh /usr/local/bin/update-rules.sh
 
 VOLUME /etc/mosdns
 EXPOSE 53/udp 53/tcp

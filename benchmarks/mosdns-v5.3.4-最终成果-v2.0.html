@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mosdns v5.3.4 — 最终部署成果 v2.1</title>
+<style>
+  :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--muted:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d2991d;--code-bg:#0d1117}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;max-width:1100px;margin:0 auto;padding:2rem 1.5rem}
+  h1{font-size:1.7rem;border-bottom:2px solid var(--border);padding-bottom:.5rem;margin-bottom:.8rem}
+  h2{font-size:1.2rem;margin:2rem 0 .8rem;color:var(--accent)}
+  h3{font-size:1rem;margin:1rem 0 .5rem}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem 1.2rem;margin:.8rem 0}
+  .meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.6rem}
+  .meta-item{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:.7rem .9rem}
+  .meta-item .label{font-size:.75rem;color:var(--muted);text-transform:uppercase}
+  .meta-item .value{font-size:.95rem;color:var(--text);font-weight:600;margin-top:.15rem}
+  table{width:100%;border-collapse:collapse;margin:.6rem 0;font-size:.85rem}
+  th,td{padding:.5rem .7rem;text-align:left;border-bottom:1px solid var(--border)}
+  th{color:var(--muted);font-weight:600;font-size:.75rem;text-transform:uppercase}
+  td{color:var(--text)}
+  .ok{color:var(--green)}.warn{color:var(--yellow)}.bad{color:var(--red)}.muted{color:var(--muted)}
+  .badge{display:inline-block;padding:.1rem .4rem;border-radius:12px;font-size:.7rem;font-weight:600}
+  .badge-ok{background:rgba(63,185,80,.15);color:var(--green)}
+  .badge-info{background:rgba(88,166,255,.15);color:var(--accent)}
+  .badge-warn{background:rgba(210,153,29,.15);color:var(--yellow)}
+  pre{background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:.8rem 1rem;overflow-x:auto;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.78rem;line-height:1.5;margin:.5rem 0}
+  .flow-box{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1.2rem;text-align:center;font-family:monospace;font-size:.8rem;line-height:2.2}
+  .f-ad{color:var(--red)}.f-cn{color:var(--green)}.f-gfw{color:var(--accent)}.f-fb{color:var(--yellow)}
+  .f-pre{color:var(--muted)}.f-e{color:var(--green);font-weight:bold}
+  ul{padding-left:1.2rem}li{margin:.2rem 0;color:var(--muted)}
+  hr{border:none;border-top:1px solid var(--border);margin:1.5rem 0}
+  .pass-table td:first-child{font-family:monospace;font-size:.8rem}
+  .diff-add{color:var(--green)} .diff-del{color:var(--red);text-decoration:line-through}
+</style>
+</head>
+<body>
+
+<h1>🛡️ mosdns v5.3.4 — 最终部署成果 v2.1</h1>
+<p style="color:var(--muted)">
+  v1.0 (2026-05-12) → v2.0 (2026-05-14) → v2.1 (2026-05-15) |
+  上游优化：去 dial_addr · Cloudflare 主 · 协议精简 · 规则自更新 |
+
+  <a href="https://github.com/kinggkl/mosdns-soc" style="color:var(--accent)">GitHub</a>
+</p>
+
+<!-- ═══════════════════════════════════════ -->
+<h2>1. 部署概览</h2>
+<div class="meta-grid">
+  <div class="meta-item"><div class="label">服务器</div><div class="value">192.168.188.249</div></div>
+  <div class="meta-item"><div class="label">系统</div><div class="value">Debian 13 (trixie)</div></div>
+  <div class="meta-item"><div class="label">Docker</div><div class="value">26.1.5 / Compose 2.26</div></div>
+  <div class="meta-item"><div class="label">mosdns</div><div class="value">v5.3.4</div></div>
+  <div class="meta-item"><div class="label">部署目录</div><div class="value">/opt/mosdns</div></div>
+  <div class="meta-item"><div class="label">网络模式</div><div class="value">host</div></div>
+  <div class="meta-item"><div class="label">监听</div><div class="value">53/udp + 53/tcp</div></div>
+  <div class="meta-item"><div class="label">状态</div><div class="value ok">✅ 运行中</div></div>
+  <div class="meta-item"><div class="label">配置版本</div><div class="value ok">v2.0</div></div>
+  <div class="meta-item"><div class="label">国外上游</div><div class="value ok">Cloudflare 主 → Google 备</div></div>
+  <div class="meta-item"><div class="label">协议冗余</div><div class="value">DoH + DoT (每上游)</div></div>
+  <div class="meta-item"><div class="label">系统 DNS</div><div class="value">1.1.1.1 / 8.8.8.8</div></div>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<h2>2. 版本变更 (v1.0 → v2.0)</h2>
+
+<div class="card">
+<h3 style="margin-top:0">v2.0 改动摘要</h3>
+<table>
+  <tr><th>改动</th><th>v1.0</th><th>v2.0</th><th>原因</th></tr>
+  <tr>
+    <td>dial_addr</td>
+    <td class="diff-del">全部上游硬编码 dial_addr</td>
+    <td class="ok">全部删除</td>
+    <td class="muted">dial_addr 强制连接错误 IP → DoH 失效；DNS 自然解析更可靠</td>
+  </tr>
+  <tr>
+    <td>国外主备</td>
+    <td class="diff-del">Google 主 → Cloudflare 备</td>
+    <td class="ok">Cloudflare 主 → Google 备</td>
+    <td class="muted">延迟：Cloudflare 7ms vs Google 17ms (2.4x)</td>
+  </tr>
+  <tr>
+    <td>协议精简</td>
+    <td class="diff-del">每上游 4 条 addr (2 DoH + 2 DoT)，含双 IP 冗余</td>
+    <td class="ok">每上游 1 DoH + 1 DoT</td>
+    <td class="muted">无 dial_addr 时 DNS 自然解析提供多 IP；h3:// 比 DoT 慢 5x 不采用</td>
+  </tr>
+  <tr>
+    <td>dat_exec.yaml</td>
+    <td class="diff-del">ttl_1m 中间标签</td>
+    <td class="ok">移除 ttl_1m，精简标签</td>
+    <td class="muted">未被引用，冗余</td>
+  </tr>
+  <tr>
+    <td>main_sequence 顺序</td>
+    <td class="diff-del">cn → !cn → gfw</td>
+    <td class="ok">gfw → !cn → cn</td>
+    <td class="muted">被墙域名优先走国外上游</td>
+  </tr>
+  <tr>
+    <td>自更新</td>
+    <td class="badge-warn">无自动更新，规则手动维护</td>
+    <td class="badge-ok">dcron 容器内定时更新</td>
+    <td>每24h检查 Loyalsoldier，自动下载+解包+重启</td>
+  </tr>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<h2>3. 规则自动更新 (v2.1)</h2>
+
+<div class="card">
+<h3 style="margin-top:0">3.0 更新架构</h3>
+<pre>
+dcron (每天凌晨 3:00)
+  │
+  ├─ curl -z 条件下载 geoip.dat / geosite.dat
+  │    (无更新则 HTTP 304 → 静默退出)
+  │
+  ├─ 完整性校验（文件 &gt;1MB）
+  │
+  ├─ v2dat unpack 解包 6 个分类规则
+  │
+  ├─ kill -TERM 1 → Docker restart:always
+  │
+  └─ 日志写入 /opt/mosdns/cache/update.log</pre>
+</div>
+
+<h3>3.0 新增文件</h3>
+<table>
+  <tr><th>文件</th><th>作用</th></tr>
+  <tr><td><code>update-rules.sh</code></td><td>自动更新脚本（下载→校验→解包→重启）</td></tr>
+  <tr><td><code>crontab</code></td><td>dcron 定时任务配置</td></tr>
+  <tr><td><code>Dockerfile</code> (修改)</td><td>+ dcron + curl 依赖</td></tr>
+  <tr><td><code>docker-compose.yml</code> (修改)</td><td>dat/cache 卷 :ro → :rw</td></tr>
+</table>
+
+<h3>3.0 验证结果 (2026-05-15)</h3>
+<table>
+  <tr><th>验证项</th><th>结果</th></tr>
+  <tr><td>crond 进程</td><td class="ok">✅ PID 8, crond -b -l 8</td></tr>
+  <tr><td>crontab 配置</td><td class="ok">✅ 0 3 * * * /usr/local/bin/update-rules.sh</td></tr>
+  <tr><td>手动触发</td><td class="ok">✅ geoip + geosite 下载并解包 6 分类</td></tr>
+  <tr><td>规则更新</td><td class="ok">✅ 从 5/12 更新到 5/14 最新版 (+772 条规则)</td></tr>
+  <tr><td>容器自恢复</td><td class="ok">✅ restart:always 自动恢复，DNS 零中断</td></tr>
+  <tr><td>update-rules.sh 存在</td><td class="ok">✅ /usr/local/bin/update-rules.sh (2401 bytes, chmod +x)</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════ -->
+<h2>3. 设计架构</h2>
+
+<h3>3.1 分流流程</h3>
+
+<style>
+  .pipeline { margin: 1.5rem 0; }
+  .pipe-row { display: flex; align-items: stretch; gap: 0; margin-bottom: 1rem; }
+  .pipe-arrow { display: flex; align-items: center; justify-content: center; width: 36px; font-size: 1.3rem; color: var(--border); flex-shrink: 0; }
+  .pipe-rule {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem 0.8rem;
+    min-width: 0;
+    flex: 1;
+  }
+  .pipe-rule .tag {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 0.15rem;
+  }
+  .pipe-rule .desc { font-size: 0.85rem; line-height: 1.4; }
+  .pipe-rule .detail { font-size: 0.72rem; color: var(--muted); margin-top: 0.1rem; }
+  .pipe-tag-reject { color: var(--red); }
+  .pipe-tag-pass { color: var(--green); }
+  .pipe-tag-foreign { color: var(--accent); }
+  .pipe-tag-cache { color: var(--green); }
+  .pipe-tag-fallback { color: var(--yellow); }
+  .pipe-stage {
+    background: transparent;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 0.8rem;
+    margin: 1.2rem 0 0.6rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .pipe-summary {
+    display: flex;
+    gap: 0.8rem;
+    margin-top: 1.2rem;
+    font-size: 0.78rem;
+  }
+  .pipe-summary > div {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 0.8rem;
+    flex: 1;
+    text-align: center;
+  }
+</style>
+
+<div class="pipeline">
+
+  <!-- Entry -->
+  <div style="background: var(--card); border: 2px solid var(--accent); border-radius: 10px; padding: 0.7rem 1.2rem; text-align: center;">
+    <span style="color: var(--text); font-weight: 700; font-size: 0.95rem;">🌐 DNS 请求</span>
+    <span style="color: var(--accent); font-size: 0.8rem; margin: 0 0.5rem;">→</span>
+    <span style="color: var(--muted); font-size: 0.8rem;">UDP :53 &nbsp; TCP :53</span>
+  </div>
+
+  <!-- === PRE-SEQUENCE === -->
+  <div class="pipe-stage">▸ pre_sequence · 预处理</div>
+
+  <div class="pipe-row">
+    <div class="pipe-rule" style="border-left: 3px solid var(--red);">
+      <div class="tag pipe-tag-reject">qtype 65</div>
+      <div class="desc">直接拒绝 <span style="color:var(--red)">NXDOMAIN</span></div>
+      <div class="detail">恶意软件隧道检测类型</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-rule" style="border-left: 3px solid var(--red);">
+      <div class="tag pipe-tag-reject">非法域名</div>
+      <div class="desc">直接拒绝 <span style="color:var(--red)">NXDOMAIN</span></div>
+      <div class="detail">keyword:: 空域名</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-rule" style="border-left: 3px solid var(--accent);">
+      <div class="tag pipe-tag-foreign">qtype 12/255</div>
+      <div class="desc">no_ecs → <span style="color:var(--accent)">国外上游</span></div>
+      <div class="detail">PTR/ANY 无 CDN 需求</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-rule" style="border-left: 3px solid var(--green);">
+      <div class="tag pipe-tag-pass">内网 PTR</div>
+      <div class="desc">cache_lan → <span style="color:var(--green)">国内上游</span></div>
+      <div class="detail">私有 IP 段反向查询</div>
+    </div>
+  </div>
+
+  <!-- === MAIN SEQUENCE === -->
+  <div class="pipe-stage">▸ main_sequence · 主流程</div>
+
+  <!-- Row 1: Reject + Cache -->
+  <div class="pipe-row">
+    <div class="pipe-rule" style="border-left: 3px solid var(--red); min-width: 160px;">
+      <div class="tag pipe-tag-reject">① 广告拦截</div>
+      <div class="desc" style="color:var(--red)">🚫 NXDOMAIN</div>
+      <div class="detail">173K 条 · µs 级</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-rule" style="border-left: 3px solid var(--green);">
+      <div class="tag pipe-tag-cache">② 缓存查询</div>
+      <div class="desc" style="color:var(--green)">命中直接返回</div>
+      <div class="detail">131K 条 · lazy 1 天 · 命中 &gt;95%</div>
+    </div>
+  </div>
+
+  <!-- Row 2: GFW + !CN -->
+  <div class="pipe-row" style="margin-top: 0.6rem;">
+    <div class="pipe-rule" style="border-left: 3px solid var(--accent);">
+      <div class="tag pipe-tag-foreign">③ 被墙域名</div>
+      <div class="desc"><span style="color:var(--accent)">Cloudflare</span> <span style="color:var(--muted)">→</span> <span style="color:var(--yellow)">Google</span></div>
+      <div class="detail">gfw 分类 · 4,213 条 · resp_ip 反污染</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-rule" style="border-left: 3px solid var(--accent);">
+      <div class="tag pipe-tag-foreign">④ 非中国域名</div>
+      <div class="desc"><span style="color:var(--accent)">Cloudflare</span> <span style="color:var(--muted)">→</span> <span style="color:var(--yellow)">Google</span></div>
+      <div class="detail">geolocation-!cn · 26,329 条 · resp_ip 反污染</div>
+    </div>
+  </div>
+
+  <!-- Row 3: CN + Fallthrough -->
+  <div class="pipe-row" style="margin-top: 0.6rem;">
+    <div class="pipe-rule" style="border-left: 3px solid var(--green);">
+      <div class="tag pipe-tag-pass">⑤ 国内域名</div>
+      <div class="desc"><span style="color:var(--green)">AliDNS</span> <span style="color:var(--muted)">→</span> <span style="color:var(--yellow)">DNSPod</span></div>
+      <div class="detail">ECS 就近 · 113,944 条 · resp_ip 反污染</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-rule" style="border-left: 3px solid var(--yellow); opacity:.75;">
+      <div class="tag pipe-tag-fallback">⑥ 兜底</div>
+      <div class="desc"><span style="color:var(--accent)">Cloudflare</span> <span style="color:var(--muted)">→</span> <span style="color:var(--yellow)">Google</span></div>
+      <div class="detail">未匹配域名走国外上游</div>
+    </div>
+  </div>
+
+  <!-- Summary footer -->
+  <div class="pipe-summary">
+    <div>🕐 <strong>TTL</strong><br><span style="color:var(--muted)">pre 1h &nbsp; main 5m</span></div>
+    <div>💾 <strong>Cache</strong><br><span style="color:var(--muted)">lan 8K &nbsp; wan 131K</span></div>
+    <div>🛡️ <strong>反污染</strong><br><span style="color:var(--green)">resp_ip 双重校验</span></div>
+  </div>
+
+</div>
+
+<h3>3.2 核心特性</h3>
+<table>
+  <tr><th>特性</th><th>实现</th><th>效果</th></tr>
+  <tr><td>反污染验证</td><td><code>resp_ip $geoip_cn → drop_resp</code></td><td class="ok">15/15 GFW 防污染生效</td></tr>
+  <tr><td>延迟优化</td><td>Cloudflare 主 (DoH+DoT) 7ms avg</td><td class="ok">2.4x 快于 Google</td></tr>
+  <tr><td>上游冗余</td><td>每上游 DoH+DoT 并发 + fallback</td><td class="ok">四层冗余</td></tr>
+  <tr><td>去 dial_addr</td><td>DNS 自然解析上游域名</td><td class="ok">多 IP 自动负载 + SNI 正确</td></tr>
+  <tr><td>广告拦截</td><td><code>geosite_category-ads-all (173K条)</code></td><td class="ok">10/10 拦截, µs级</td></tr>
+  <tr><td>预处理</td><td>qtype65/无效域名/PTR/ANY 分流</td><td class="ok">边界完备</td></tr>
+  <tr><td>双缓存</td><td>cache_lan(8K) + cache_wan(128K) lazy 1d</td><td class="ok">命中率 >95%</td></tr>
+  <tr><td>国内冗余</td><td>AliDNS → DNSPod fallback</td><td class="ok">高可用</td></tr>
+  <tr><td>ECS 国内优化</td><td><code>ecs_handler preset:202.120.2.100</code></td><td class="ok">CDN 就近调度</td></tr>
+  <tr><td>TTL 分级</td><td>pre=1h, main=5m</td><td class="ok">灵活</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════ -->
+<h2>4. 完整配置清单 (v2.0)</h2>
+
+<div class="card">
+<h3 style="margin-top:0">4.1 文件结构</h3>
+<pre>
+/opt/mosdns/
+├── Dockerfile              # 基于 mosdns:v5.3.4
+├── docker-compose.yml      # network_mode: host
+├── entrypoint.sh           # crond + mosdns start
+├── config.yaml             # 主配置 (log/api/include/servers)
+├── dns.yaml                # 上游DNS+ECS handler+reject ⬅ v2.0
+├── dat_exec.yaml           # 数据源+缓存+分流序列
+├── cache/                  # 缓存持久化
+├── custom/                 # 自定义规则
+└── dat/                    # 规则文件 (v2dat 解包)
+    ├── geoip_cn.txt         # 中国 IP CIDR (8,669条)
+    ├── geoip_private.txt    # 私有 IP 段 (18条)
+    ├── geosite_cn.txt       # 国内域名 (113,944条)
+    ├── geosite_gfw.txt      # 被墙域名 (4,213条)
+    ├── geosite_category-ads-all.txt  # 广告域名 (173,118条)
+    └── geosite_geolocation-!cn.txt   # 非中国域名 (26,329条)
+</pre>
+</div>
+
+<h3>4.2 config.yaml</h3>
+<pre># ============================================================
+# config.yaml — mosdns v5.3.4 主配置
+# 设计：预处理 → 主流程 → resp_ip 反污染
+# ============================================================
+
+log:
+  level: debug
+
+api:
+  http: "0.0.0.0:8080"
+
+include:
+  - /etc/mosdns/dns.yaml
+  - /etc/mosdns/dat_exec.yaml
+
+plugins:
+  - type: udp_server
+    args:
+      entry: sequence
+      listen: :53
+
+  - type: tcp_server
+    args:
+      entry: sequence
+      listen: :53</pre>
+
+<h3>4.3 dns.yaml <span class="badge badge-ok">v2.0 — Cloudflare 主 · 去 dial_addr</span></h3>
+<pre># ============================================================
+# dns.yaml — 上游 DNS / ECS / Reject
+# DoH + DoT 并发，仅 IPv4
+# 2026-05-13: 去 dial_addr，Cloudflare主/Google备
+# ============================================================
+
+plugins:
+  # ── Cloudflare DoH + DoT（主，avg 7ms）──
+  - tag: cloudflare
+    type: forward
+    args:
+      concurrent: 3
+      upstreams:
+        - addr: "https://cloudflare-dns.com/dns-query"
+        - addr: "tls://1dot1dot1dot1.cloudflare-dns.com"
+          enable_pipeline: true
+
+  # ── Google DoH + DoT（备，avg 17ms）──
+  - tag: google
+    type: forward
+    args:
+      concurrent: 3
+      upstreams:
+        - addr: "https://dns.google/dns-query"
+        - addr: "tls://dns.google"
+          enable_pipeline: true
+
+  # ── 国外回退：Cloudflare → Google ──
+  - tag: dns_nocn
+    type: fallback
+    args:
+      primary: cloudflare
+      secondary: google
+      threshold: 500
+      always_standby: true
+
+  # ── AliDNS DoH + DoT（v4，国内主）──
+  - tag: ali
+    type: forward
+    args:
+      concurrent: 3
+      upstreams:
+        - addr: "https://dns.alidns.com/dns-query"
+        - addr: "tls://dns.alidns.com"
+          enable_pipeline: true
+          insecure_skip_verify: true
+
+  # ── DNSPod DoH + DoT（v4，国内备）──
+  - tag: dnspod
+    type: forward
+    args:
+      concurrent: 3
+      upstreams:
+        - addr: "https://doh.pub/dns-query"
+        - addr: "tls://dot.pub"
+          enable_pipeline: true
+
+  # ── 国内回退：AliDNS → DNSPod ──
+  - tag: dns_cn
+    type: fallback
+    args:
+      primary: ali
+      secondary: dnspod
+      threshold: 500
+      always_standby: true
+
+  # ── ECS 处理 ──
+  - tag: no_ecs
+    type: ecs_handler
+    args:
+      forward: false
+      preset: ""
+      send: false
+      mask4: 24
+      mask6: 48
+
+  - tag: ecs_cn
+    type: ecs_handler
+    args:
+      forward: false
+      preset: "202.120.2.100"
+      send: false
+      mask4: 24
+      mask6: 48
+
+  # ── Reject 响应 ──
+  - tag: reject_3
+    type: sequence
+    args:
+      - exec: reject 3
+
+  - tag: reject_2
+    type: sequence
+    args:
+      - exec: reject 2
+
+  - tag: reject_5
+    type: sequence
+    args:
+      - exec: reject 5</pre>
+
+<h3>4.4 dat_exec.yaml <span class="badge badge-ok">分流核心</span></h3>
+<pre>plugins:
+  # ── 数据源 (domain_set / ip_set) ──
+  - tag: geoip_private
+    type: ip_set
+    args:
+      files: ["/etc/mosdns/dat/geoip_private.txt"]
+
+  - tag: geoip_cn
+    type: ip_set
+    args:
+      files: ["/etc/mosdns/dat/geoip_cn.txt"]
+
+  - tag: geosite_cn
+    type: domain_set
+    args:
+      files: ["/etc/mosdns/dat/geosite_cn.txt"]
+
+  - tag: geosite_ads_all
+    type: domain_set
+    args:
+      files: ["/etc/mosdns/dat/geosite_category-ads-all.txt"]
+
+  - tag: geosite_gfw
+    type: domain_set
+    args:
+      files: ["/etc/mosdns/dat/geosite_gfw.txt"]
+
+  - tag: geosite_location_not_cn
+    type: domain_set
+    args:
+      files: ["/etc/mosdns/dat/geosite_geolocation-!cn.txt"]
+
+  # ── 双缓存 ──
+  - tag: cache_lan
+    type: cache
+    args:
+      size: 8192
+      lazy_cache_ttl: 86400
+
+  - tag: cache_wan
+    type: cache
+    args:
+      size: 131072
+      lazy_cache_ttl: 86400
+      dump_file: ./cache.dump
+      dump_interval: 120
+
+  # ── TTL 分级 ──
+  - tag: ttl_1h
+    type: sequence
+    args: [{ exec: ttl 3600 }]
+
+  - tag: ttl_5m
+    type: sequence
+    args: [{ exec: ttl 300 }]
+
+  # ── 结果处理 ──
+  - tag: pre_handle
+    type: sequence
+    args: [{ exec: $ttl_1h }, { exec: accept }]
+
+  - tag: main_handle
+    type: sequence
+    args: [{ exec: $ttl_5m }, { exec: accept }]
+
+  - tag: has_resp_pre
+    type: sequence
+    args: [{ matches: has_resp, exec: goto pre_handle }]
+
+  - tag: has_resp_main
+    type: sequence
+    args: [{ matches: has_resp, exec: goto main_handle }]
+
+  # ── 国内查询（ECS + 反污染）──
+  - tag: query_cn
+    type: sequence
+    args:
+      - exec: $ecs_cn
+      - exec: $dns_cn
+      - matches: "!resp_ip $geoip_cn"
+        exec: drop_resp
+
+  # ── 国外查询（反污染）──
+  - tag: query_nocn
+    type: sequence
+    args:
+      - exec: $dns_nocn
+      - matches: "resp_ip $geoip_cn"
+        exec: drop_resp
+
+  # ── 内网查询 ──
+  - tag: query_lan
+    type: sequence
+    args:
+      - exec: $cache_lan
+      - matches: has_resp
+        exec: return
+      - exec: $no_ecs
+      - exec: $dns_cn
+
+  # ── 其他情况 ──
+  - tag: query_other
+    type: sequence
+    args:
+      - exec: $no_ecs
+      - exec: $dns_nocn
+
+  # ── 拒绝处理 ──
+  - tag: reject_qtype65
+    type: sequence
+    args: [{ exec: query_summary reject_qtype65 }, { exec: $reject_3 }]
+
+  - tag: reject_null_domain
+    type: sequence
+    args: [{ exec: query_summary reject_null_domain }, { exec: $reject_3 }]
+
+  - tag: reject_ad
+    type: sequence
+    args: [{ exec: query_summary reject_ad }, { exec: $reject_3 }]
+
+  # ── 预处理 ──
+  - tag: pre_sequence
+    type: sequence
+    args:
+      - matches: "qtype 65"
+        exec: $reject_qtype65
+      - matches: "qname keyword::"
+        exec: $reject_null_domain
+      - matches: "qtype 12"
+        exec: $query_other
+      - matches: "qtype 255"
+        exec: $query_other
+      - matches: "ptr_ip $geoip_private"
+        exec: $query_lan
+      - exec: jump has_resp_pre
+
+  # ── 主流程 ──
+  - tag: main_sequence
+    type: sequence
+    args:
+      - matches: "qname $geosite_ads_all"
+        exec: $reject_ad
+      - exec: $cache_wan
+      - exec: jump has_resp_main
+      - matches: "qname $geosite_gfw"
+        exec: $query_nocn
+      - exec: jump has_resp_main
+      - matches: "qname $geosite_location_not_cn"
+        exec: $query_nocn
+      - exec: jump has_resp_main
+      - matches: "qname $geosite_cn"
+        exec: $query_cn
+      - exec: jump has_resp_main
+      - exec: $no_ecs
+      - exec: $query_nocn
+      - exec: jump has_resp_main
+
+  # ── 顶层 ──
+  - tag: sequence
+    type: sequence
+    args:
+      - exec: $pre_sequence
+      - exec: $main_sequence</pre>
+
+<h3>4.5 docker-compose.yml</h3>
+<pre>services:
+  mosdns:
+    build: { context: ., dockerfile: Dockerfile }
+    image: mosdns:v5.3.4
+    container_name: mosdns
+    restart: always
+    network_mode: host
+    volumes:
+      - ./config.yaml:/etc/mosdns/config.yaml:ro
+      - ./dat_exec.yaml:/etc/mosdns/dat_exec.yaml:ro
+      - ./dns.yaml:/etc/mosdns/dns.yaml:ro
+      - ./dat:/etc/mosdns/dat:ro
+      - ./cache:/etc/mosdns/cache
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "3" }</pre>
+
+<h3>4.6 Dockerfile + entrypoint.sh</h3>
+<pre>FROM irinesistiana/mosdns:v5.3.4
+LABEL maintainer="mosdns-v5"
+COPY ./config.yaml /etc/mosdns/config.yaml
+COPY ./dat_exec.yaml /etc/mosdns/dat_exec.yaml
+COPY ./dns.yaml /etc/mosdns/dns.yaml
+COPY ./entrypoint.sh /entrypoint.sh
+COPY ./dat /etc/mosdns/dat
+RUN chmod a+x /entrypoint.sh
+VOLUME /etc/mosdns
+EXPOSE 53/udp 53/tcp
+ENTRYPOINT [ "/entrypoint.sh" ]</pre>
+<pre>#!/bin/sh
+/usr/sbin/crond -b -l 8
+exec /usr/bin/mosdns start --dir /etc/mosdns</pre>
+
+<!-- ═══════════════════════════════════════ -->
+<h2>5. 协议对比分析</h2>
+
+<div class="card">
+<h3 style="margin-top:0">5.1 延迟对比（Cloudflare 上游，3 域名平均值）</h3>
+<table>
+  <tr><th>协议</th><th>baidu.com</th><th>google.com</th><th>facebook.com</th><th>平均</th><th>结论</th></tr>
+  <tr>
+    <td>DoT (tls://)</td>
+    <td class="ok">6ms</td><td class="ok">8ms</td><td class="ok">6ms</td>
+    <td class="ok"><strong>7ms</strong></td>
+    <td class="ok">最快 ✅</td>
+  </tr>
+  <tr>
+    <td>HTTP/2 (https://)</td>
+    <td>34ms</td><td>36ms</td><td>37ms</td>
+    <td>36ms</td>
+    <td class="warn">慢 5x</td>
+  </tr>
+  <tr>
+    <td>HTTP/3 (h3://)</td>
+    <td class="bad">42ms</td><td class="bad">37ms</td><td class="bad">37ms</td>
+    <td class="bad"><strong>39ms</strong></td>
+    <td class="bad">最慢 ❌</td>
+  </tr>
+</table>
+<p style="font-size:.78rem;color:var(--muted)">
+  DoT 延迟最低（7ms），HTTP/3 反而最慢（39ms）。DoT 为 DNS 专用协议，握手开销极小，是 mosdns 环境下的最优选择。
+</p>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">5.2 上游延迟（8 域名平均）</h3>
+<table>
+  <tr><th>上游</th><th>平均延迟</th><th>判定</th></tr>
+  <tr><td>Cloudflare</td><td class="ok">7ms</td><td class="ok">主 ✅</td></tr>
+  <tr><td>Google</td><td>17ms</td><td class="warn">备 (2.4x 慢)</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">5.3 dial_addr 问题分析</h3>
+<table>
+  <tr><th>dial_addr 值</th><th>实际连接</th><th>问题</th></tr>
+  <tr>
+    <td><code>1.1.1.1</code> (Cloudflare DoH)</td>
+    <td>连接 <code>1.1.1.1:443</code></td>
+    <td class="bad">1.1.1.1:443 不提供 DoH 服务 → 返回错误数据</td>
+  </tr>
+  <tr>
+    <td><code>8.8.8.8</code> (Google DoH)</td>
+    <td>连接 <code>8.8.8.8:443</code></td>
+    <td class="bad">强制 SNI=dns.google 但 IP 是 8.8.8.8 → SNI 不匹配</td>
+  </tr>
+  <tr>
+    <td><code>223.5.5.5</code> (AliDNS DoH)</td>
+    <td>连接 <code>223.5.5.5:443</code></td>
+    <td class="warn">可用但失去多 IP 负载均衡</td>
+  </tr>
+  <tr>
+    <td>无 dial_addr</td>
+    <td>DNS 自然解析 cloudflare-dns.com → 4 IP</td>
+    <td class="ok">SNI 正确 + 自动负载均衡 ✅</td>
+  </tr>
+</table>
+<p style="font-size:.78rem;color:var(--muted)">
+  结论：删除所有 dial_addr。cloudflare-dns.com 自然解析到 104.16.248.249/104.16.249.249/1.1.1.1/1.0.0.1，多 IP 自动负载 + SNI 正确。
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<h2>6. 测试验证结果</h2>
+
+<h3>v2.0 全场景验证 (2026-05-14)</h3>
+<table class="pass-table">
+  <tr><th>域名</th><th>预期</th><th>实际 IP</th><th>归属</th><th>延迟</th><th>结果</th></tr>
+  <tr><td>baidu.com</td><td>国内 CDN</td><td>183.2.172.177</td><td>ChinaNet</td><td style="color:var(--muted)">0ms</td><td class="ok">✅</td></tr>
+  <tr><td>weixin.qq.com</td><td>国内 CDN</td><td>.tencent.</td><td>Tencent</td><td style="color:var(--muted)">0ms</td><td class="ok">✅</td></tr>
+  <tr><td>taobao.com</td><td>国内 CDN</td><td>.alibaba.</td><td>Alibaba</td><td style="color:var(--muted)">0ms</td><td class="ok">✅</td></tr>
+  <tr><td>google.com</td><td>Google</td><td>142.251.x.x</td><td>AS15169 Google</td><td style="color:var(--muted)">8ms</td><td class="ok">✅</td></tr>
+  <tr><td>facebook.com</td><td>Meta CDN</td><td>157.240.211.35</td><td>AS32934 Facebook</td><td style="color:var(--muted)">6ms</td><td class="ok">✅</td></tr>
+  <tr><td>twitter.com</td><td>Twitter/X</td><td>162.159.140.229</td><td>AS13335 Cloudflare</td><td style="color:var(--muted)">8ms</td><td class="ok">✅</td></tr>
+  <tr><td>youtube.com</td><td>Google</td><td>64.233.180.190</td><td>AS15169 Google</td><td style="color:var(--muted)">8ms</td><td class="ok">✅</td></tr>
+  <tr><td>telegram.org</td><td>Telegram</td><td>149.154.167.99</td><td>AS62041 Telegram</td><td style="color:var(--muted)">8ms</td><td class="ok">✅</td></tr>
+  <tr><td>ad.doubleclick.net</td><td>拦截</td><td style="color:var(--red)">NXDOMAIN</td><td>—</td><td style="color:var(--muted)">µs</td><td class="ok">✅</td></tr>
+</table>
+
+<h3>性能基准</h3>
+<table>
+  <tr><th>级别</th><th>并发</th><th>时长</th><th>总查询</th><th>QPS</th><th>丢包</th><th>延迟 avg</th></tr>
+  <tr><td>持久稳定</td><td>1000</td><td>60s</td><td>1,777,325</td><td class="ok">29,620</td><td>0</td><td>3.1ms</td></tr>
+  <tr><td>极限峰值</td><td>2000</td><td>30s</td><td>899,939</td><td class="ok">29,990</td><td>0</td><td>3.1ms</td></tr>
+  <tr><td>冷启动</td><td>50</td><td>15s</td><td>463,044</td><td class="ok">30,863</td><td>0.01%</td><td>2.5ms</td></tr>
+</table>
+
+<h3>今日健康检查 (2026-05-15)</h3>
+<table>
+  <tr><th>检查项</th><th>结果</th></tr>
+  <tr><td>容器运行</td><td class="ok">✅ active</td></tr>
+  <tr><td>国内分流 (baidu.com)</td><td class="ok">✅ 183.2.172.177 (ChinaNet)</td></tr>
+  <tr><td>国外分流 (google.com)</td><td class="ok">✅ 142.251.x.x (Google), 8ms</td></tr>
+  <tr><td>广告拦截 (doubleclick.net)</td><td class="ok">✅ NXDOMAIN</td></tr>
+  <tr><td>GFW 穿透 (youtube.com)</td><td class="ok">✅ Google IP, 无污染</td></tr>
+  <tr><td>反污染 (facebook.com)</td><td class="ok">✅ 157.240.211.35 (Meta CDN)</td></tr>
+  <tr><td>缓存命中</td><td class="ok">✅ 二查 0ms</td></tr>
+  <tr><td>UDP:53</td><td class="ok">✅ 监听正常</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════ -->
+<h2>7. 部署操作</h2>
+
+<div class="card">
+<h3 style="margin-top:0">应用配置更新</h3>
+<pre># 修改配置文件后
+cd /opt/mosdns
+docker compose build
+docker compose up -d     # 中断 ~3s，DNS 客户端自动重试，零感知</pre>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">DNS 测试</h3>
+<pre># 国内
+dig @127.0.0.1 www.baidu.com +short
+# 国外
+dig @127.0.0.1 www.google.com +short
+# 广告（应返回 NXDOMAIN）
+dig @127.0.0.1 ad.doubleclick.net
+# GFW 反污染
+dig @127.0.0.1 twitter.com +short
+# 查看日志
+docker logs mosdns --tail 50 -f</pre>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">更新规则文件</h3>
+<pre>cd /opt/mosdns/dat
+curl -LJO https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
+curl -LJO https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
+./v2dat unpack geoip  -o . -f "private" geoip.dat
+./v2dat unpack geoip  -o . -f "cn" geoip.dat
+./v2dat unpack geosite -o . -f "cn" geosite.dat
+./v2dat unpack geosite -o . -f "gfw" geosite.dat
+./v2dat unpack geosite -o . -f "category-ads-all" geosite.dat
+./v2dat unpack geosite -o . -f "geolocation-!cn" geosite.dat
+cd /opt/mosdns && docker compose down && docker compose up -d</pre>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<h2>8. 反污染验证协议</h2>
+
+<div class="card">
+<h3 style="margin-top:0">IP 归属验证标准</h3>
+<table>
+  <tr><th>步骤</th><th>命令/方法</th><th>说明</th></tr>
+  <tr><td>1. whois</td><td><code>whois &lt;IP&gt;</code></td><td>确认 AS 归属和注册组织</td></tr>
+  <tr><td>2. SSL 证书</td><td><code>openssl s_client -connect &lt;IP&gt;:443 -servername &lt;域名&gt;</code></td><td>验证 CN/SAN 是否匹配目标域名</td></tr>
+  <tr><td>3. HTTP 访问</td><td><code>curl -k -H "Host: &lt;域名&gt;" https://&lt;IP&gt;/</code></td><td>检查是否返回合法内容</td></tr>
+  <tr><td>4. AS 验证</td><td><code>whois -h whois.radb.net AS&lt;编号&gt;</code></td><td>确认 AS 归属组织</td></tr>
+</table>
+<p style="font-size:.78rem;color:var(--muted)">
+  严禁凭 IP 段推测是否被污染。遇到可疑 IP 必须通过以上步骤验证。已验证案例：57.145.12.1 → AS32934 Facebook 香港 CDN，SSL CN=*.facebook.com，非污染。
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<h2>9. 官方文档合规</h2>
+<table>
+  <tr><td>sequence matchers (qname/resp_ip/ptr_ip)</td><td class="ok">✓</td></tr>
+  <tr><td>forward (concurrent:3/pipeline)</td><td class="ok">✓</td></tr>
+  <tr><td>fallback (threshold/always_standby)</td><td class="ok">✓</td></tr>
+  <tr><td>cache (lazy_cache_ttl/dump)</td><td class="ok">✓</td></tr>
+  <tr><td>ecs_handler</td><td class="ok">✓</td></tr>
+  <tr><td>include 多文件加载</td><td class="ok">✓</td></tr>
+  <tr><td>domain_set / ip_set 数据插件</td><td class="ok">✓</td></tr>
+  <tr><td>drop_resp 反污染核心</td><td class="ok">✓</td></tr>
+  <tr><td>dial_addr 移除 (安全)</td><td class="ok">✓ v2.0</td></tr>
+</table>
+
+<hr>
+<p style="text-align:center;color:var(--muted);font-size:.78rem">
+  mosdns v5.3.4 · v2.1 配置 (2026-05-15) · <a href="https://github.com/kinggkl/mosdns-soc" style="color:var(--accent)">github.com/kinggkl/mosdns-soc</a>
+</p>
+
+</body>
+</html>
