@@ -1,6 +1,6 @@
 # ============================================================
-# mosdns v5 — Docker Compose 部署 v2.1
-# 新增：规则自动更新（dat 卷改为读写）
+# mosdns v5 — Docker Compose 部署 v2.2
+# 新增：规则自动更新（dat 卷改为读写）+ 时区设置
 # ============================================================
 
 services:
@@ -10,6 +10,8 @@ services:
       dockerfile: Dockerfile
     image: mosdns:v5.3.4
     container_name: mosdns
+    environment:
+      - TZ=Asia/Shanghai
     restart: always
     network_mode: host
     volumes:
