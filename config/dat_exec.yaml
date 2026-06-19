@@ -1,6 +1,6 @@
 # ============================================================
 # dat_exec.yaml — 数据源 / 缓存 / 分流序列
-# 设计：预处理 → 主流程 → resp_ip 反污染
+# 设计：预处理 → 主流程 → resp_ip 反污染 + 交叉验证
 # ============================================================
 
 plugins:
@@ -85,13 +85,22 @@ plugins:
       - matches: "!resp_ip $geoip_cn"
         exec: drop_resp
 
-  # ── 国外查询（反污染）──
+  # ── 国外查询（交叉验证反污染）──
+  # 策略：nocn 返回 CN IP 时，不直接丢弃，回退到 cn DNS 二次验证
+  # 若 cn DNS 也返回相同 IP → 合法 DNS 记录 → 接受
+  # 若 cn DNS 返回不同 IP 或无响应 → 至少有一个可用
+  # 仅两边均无有效响应时才 NATURALLY REFUSED
   - tag: query_nocn
     type: sequence
     args:
       - exec: $dns_nocn
-      - matches: "resp_ip $geoip_cn"
+      - matches: "has_resp && !resp_ip $geoip_cn"
+        exec: jump has_resp_main
+      - matches: "has_resp && resp_ip $geoip_cn"
         exec: drop_resp
+      - exec: $ecs_cn
+      - exec: $dns_cn
+      - exec: jump has_resp_main
 
   # ── 内网查询 ──
   - tag: query_lan
