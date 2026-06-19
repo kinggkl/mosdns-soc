@@ -1,6 +1,12 @@
 # ============================================================
 # dat_exec.yaml — 数据源 / 缓存 / 分流序列
-# 设计：预处理 → 主流程 → resp_ip 反污染 + 交叉验证
+# 设计：预处理 → 主流程 → 分级反污染 (strict/fallback)
+#
+# 反污染策略:
+#   query_nocn_strict  (GFW/!cn) : CN IP 直接拒绝 — 高置信度污染
+#   query_nocn_fallback (兜底)    : CN IP 交叉验证 — cache_warm暂存
+#     → cn DNS 验证成功 → 接受
+#     → cn DNS 失败     → 从 cache_warm 恢复 nocn 结果
 # ============================================================
 
 plugins:
@@ -35,7 +41,7 @@ plugins:
     args:
       files: ["/etc/mosdns/dat/geosite_geolocation-!cn.txt"]
 
-  # ── 双缓存 ──
+  # ── 三层缓存 ──
   - tag: cache_lan
     type: cache
     args:
@@ -49,6 +55,13 @@ plugins:
       lazy_cache_ttl: 86400
       dump_file: ./cache.dump
       dump_interval: 120
+
+  # ── 交叉验证暂存缓存（仅暂存nocn CN-IP结果，TTL 10s 足够验证）──
+  - tag: cache_warm
+    type: cache
+    args:
+      size: 2048
+      lazy_cache_ttl: 10
 
   # ── TTL 分级 ──
   - tag: ttl_1h
@@ -85,14 +98,22 @@ plugins:
       - matches: "!resp_ip $geoip_cn"
         exec: drop_resp
 
-  # ── 国外查询（交叉验证反污染）──
-  # 策略：nocn 返回 CN IP 时，不直接丢弃，回退到 cn DNS 二次验证
-  # 若 cn DNS 也返回相同 IP → 合法 DNS 记录 → 接受
-  # 若 cn DNS 返回不同 IP 或无响应 → 至少有一个可用
-  # 仅两边均无有效响应时才 NATURALLY REFUSED
-  - tag: query_nocn
+  # ── 严格国外查询（GFW / !cn 列表）──
+  # 这些域名已知应该是国外 IP，若出现 CN IP 高概率为污染 → 直接拒绝
+  - tag: query_nocn_strict
     type: sequence
     args:
+      - exec: $dns_nocn
+      - matches: "resp_ip $geoip_cn"
+        exec: drop_resp
+
+  # ── 兜底国外查询（未分类域名）──
+  # 策略: 先走 nocn，若返回 CN IP 则保存到 cache_warm 后回退 cn DNS
+  # cn DNS 验证成功 → 接受; cn DNS 失败 → cache_warm 恢复 nocn 结果
+  - tag: query_nocn_fallback
+    type: sequence
+    args:
+      - exec: $cache_warm
       - exec: $dns_nocn
       - matches: "has_resp && !resp_ip $geoip_cn"
         exec: jump has_resp_main
@@ -100,6 +121,9 @@ plugins:
         exec: drop_resp
       - exec: $ecs_cn
       - exec: $dns_cn
+      - matches: has_resp
+        exec: jump has_resp_main
+      - exec: $cache_warm
       - exec: jump has_resp_main
 
   # ── 内网查询 ──
@@ -157,16 +181,16 @@ plugins:
       - exec: $cache_wan
       - exec: jump has_resp_main
       - matches: "qname $geosite_gfw"
-        exec: $query_nocn
+        exec: $query_nocn_strict
       - exec: jump has_resp_main
       - matches: "qname $geosite_location_not_cn"
-        exec: $query_nocn
+        exec: $query_nocn_strict
       - exec: jump has_resp_main
       - matches: "qname $geosite_cn"
         exec: $query_cn
       - exec: jump has_resp_main
       - exec: $no_ecs
-      - exec: $query_nocn
+      - exec: $query_nocn_fallback
       - exec: jump has_resp_main
 
   # ── 顶层 ──
