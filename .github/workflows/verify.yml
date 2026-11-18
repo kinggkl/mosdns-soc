@@ -26,7 +26,7 @@ jobs:
         run: |
           docker compose up -d mosdns
           for attempt in $(seq 1 30); do
-            if sh scripts/test.sh 127.0.0.1 1053 --ipv4-policy; then exit 0; fi
+            if sh scripts/test.sh 127.0.0.1 1053 --smoke; then exit 0; fi
             sleep 1
           done
           exit 1

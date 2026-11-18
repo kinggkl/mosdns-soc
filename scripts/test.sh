@@ -11,11 +11,11 @@ query() {
 }
 
 check_address() {
-    response=$(query "$1" A "+notcp") || response=
+    response=$(query "$1" A "$2") || response=
     if printf '%s\n' "$response" | awk '$4 == "A" { found = 1 } END { exit !found }'; then
-        printf 'OK %s A\n' "$1"
+        printf 'OK %s A %s\n' "$1" "$2"
     else
-        printf 'FAIL %s A\n' "$1" >&2
+        printf 'FAIL %s A %s\n' "$1" "$2" >&2
         failures=$((failures + 1))
     fi
 }
@@ -34,16 +34,17 @@ check_empty() {
 }
 
 for transport in +notcp +tcp; do
+    check_address example.com "$transport"
     check_empty example.com AAAA "$transport" NOERROR
     check_empty example.com TYPE64 "$transport" NOERROR
     check_empty example.com TYPE65 "$transport" NXDOMAIN
 done
 
-if [ "$mode" != --ipv4-policy ]; then
+if [ "$mode" != --smoke ]; then
     for domain in www.baidu.com www.qq.com www.taobao.com www.jd.com www.bilibili.com \
         www.google.com www.youtube.com www.github.com cloudflare.com twitter.com telegram.org www.facebook.com
     do
-        check_address "$domain"
+        check_address "$domain" "+notcp"
     done
     for domain in ad.doubleclick.net pagead2.googlesyndication.com doubleclick.net; do
         check_empty "$domain" A "+notcp" NXDOMAIN
