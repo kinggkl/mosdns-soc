@@ -38,10 +38,9 @@ jobs:
           '
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache: false
       - name: Scan image binaries for known Go vulnerabilities
-        continue-on-error: true
         run: |
           docker compose cp mosdns:/usr/local/bin/mosdns /tmp/mosdns
           docker compose cp mosdns:/usr/local/bin/v2dat /tmp/v2dat
