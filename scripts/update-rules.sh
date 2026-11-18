@@ -1,71 +1,88 @@
 #!/bin/sh
-# update-rules.sh — Loyalsoldier 规则自动更新
-# 由 dcron 定时触发，运行在容器内
-set -e
+set -eu
 
-DAT_DIR="/etc/mosdns/dat"
-LOG="/etc/mosdns/cache/update.log"
+data_dir=${RULES_DATA_DIR:-/etc/mosdns/dat}
+repository=https://github.com/Loyalsoldier/v2ray-rules-dat
+mode=${1:-latest}
+mkdir -p "$data_dir"
+cd "$data_dir"
+exec 9>.update.lock
+flock 9
 
-GEOIP_URL="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"
-GEOSITE_URL="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
-
-log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $1" | tee -a "$LOG"; }
-
-cd "$DAT_DIR"
-
-log "Checking for rule updates..."
-
-# 下载（-z 检查 If-Modified-Since，无更新则 304 → 空文件）
-curl -sL -o geoip.dat.new -z geoip.dat "$GEOIP_URL"
-curl -sL -o geosite.dat.new -z geosite.dat "$GEOSITE_URL"
-
-GEOIP_NEW=false
-GEOSITE_NEW=false
-[ -s geoip.dat.new ] && GEOIP_NEW=true
-[ -s geosite.dat.new ] && GEOSITE_NEW=true
-
-if ! $GEOIP_NEW && ! $GEOSITE_NEW; then
-    log "No updates available"
-    rm -f geoip.dat.new geosite.dat.new
+if [ "$mode" = --seed ] && [ -s current/version ]; then
     exit 0
 fi
 
-# 验证下载完整性（正常的 dat 文件 >1MB）
-for f in geoip.dat.new geosite.dat.new; do
-    if [ -f "$f" ]; then
-        SIZE=$(wc -c < "$f")
-        if [ "$SIZE" -lt 1000000 ]; then
-            log "ERROR: $f too small (${SIZE} bytes), aborting"
-            rm -f geoip.dat.new geosite.dat.new
-            exit 1
-        fi
+stage=$(mktemp -d .update.XXXXXX)
+trap 'rm -rf "$stage"' EXIT
+trap 'exit 1' HUP INT TERM
+
+case "$mode" in
+    --seed)
+        cp -R /usr/share/mosdns-rules/current/. "$stage/"
+        release=$(cat "$stage/version")
+        ;;
+    latest|--restart)
+        location=$(curl -fsSL --retry 3 --max-time 60 -o /dev/null -w '%{url_effective}' "$repository/releases/latest")
+        release=${location##*/}
+        ;;
+    *)
+        release=$mode
+        ;;
+esac
+
+case "$release" in
+    ''|*[!0-9]*) echo "Invalid rules release: $release" >&2; exit 1 ;;
+esac
+[ "${#release}" -eq 12 ] || { echo "Invalid rules release: $release" >&2; exit 1; }
+
+previous=
+if [ -s current/version ]; then
+    previous=$(cat current/version)
+    if [ "$previous" -ge "$release" ]; then
+        printf 'Rules already current: %s\n' "$previous"
+        exit 0
+    fi
+fi
+
+if [ "$mode" != --seed ]; then
+    (
+        cd "$stage"
+        for asset in geoip.dat geosite.dat; do
+            url="$repository/releases/download/$release/$asset"
+            curl -fsSL --retry 3 --max-time 120 -o "$asset" "$url"
+            curl -fsSL --retry 3 --max-time 60 -o "$asset.sha256sum" "$url.sha256sum"
+            sha256sum -c "$asset.sha256sum"
+        done
+        v2dat unpack geoip -f private -f cn geoip.dat
+        v2dat unpack geosite -f cn -f gfw -f category-ads-all -f 'geolocation-!cn' geosite.dat
+        rm geoip.dat geosite.dat geoip.dat.sha256sum geosite.dat.sha256sum
+        printf '%s\n' "$release" >version
+    )
+fi
+
+for rule in geoip_private geoip_cn geosite_cn geosite_gfw geosite_category-ads-all 'geosite_geolocation-!cn'; do
+    [ -s "$stage/$rule.txt" ] || { echo "Missing rule: $rule" >&2; exit 1; }
+done
+
+snapshot="rules-$release"
+if [ -e "$snapshot" ]; then
+    # A prior run may have stopped between publishing the directory and its symlink.
+    rm -rf "$snapshot"
+fi
+mv "$stage" "$snapshot"
+mkdir "$stage"
+ln -s "$snapshot" "$stage/current"
+mv -Tf "$stage/current" current
+
+# Keep the previous release available for rollback.
+for path in rules-????????????; do
+    if [ -d "$path" ] && [ "$path" != "$snapshot" ] && [ "$path" != "rules-$previous" ]; then
+        rm -rf "$path"
     fi
 done
 
-# 替换旧文件
-if $GEOIP_NEW; then
-    mv geoip.dat geoip.dat.bak 2>/dev/null || true
-    mv geoip.dat.new geoip.dat
-    log "Updated: geoip.dat"
+printf 'Activated rules release %s\n' "$release"
+if [ "$mode" = --restart ]; then
+    kill -TERM 1
 fi
-if $GEOSITE_NEW; then
-    mv geosite.dat geosite.dat.bak 2>/dev/null || true
-    mv geosite.dat.new geosite.dat
-    log "Updated: geosite.dat"
-fi
-
-# 解包 6 个分类
-log "Unpacking rules..."
-./v2dat unpack geoip  -o . -f "private" geoip.dat             || { log "FAIL: unpack geoip_private"; exit 1; }
-./v2dat unpack geoip  -o . -f "cn" geoip.dat                  || { log "FAIL: unpack geoip_cn"; exit 1; }
-./v2dat unpack geosite -o . -f "cn" geosite.dat               || { log "FAIL: unpack geosite_cn"; exit 1; }
-./v2dat unpack geosite -o . -f "gfw" geosite.dat              || { log "FAIL: unpack geosite_gfw"; exit 1; }
-./v2dat unpack geosite -o . -f "category-ads-all" geosite.dat || { log "FAIL: unpack geosite_ads"; exit 1; }
-./v2dat unpack geosite -o . -f "geolocation-!cn" geosite.dat  || { log "FAIL: unpack geosite_!cn"; exit 1; }
-
-log "Update complete. Restarting mosdns..."
-sync
-sleep 1
-
-# 触发 Docker 重启（restart: always 策略自动恢复）
-kill -TERM 1

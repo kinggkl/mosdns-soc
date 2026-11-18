@@ -1,25 +1,32 @@
-# ============================================================
-# mosdns v5.3.4 Dockerfile — v2.2 (auto-update + timezone fix)
-# 新增：dcron + update-rules.sh 规则自动更新 + tzdata 时区
-# 参考：Jasper-1024/mosdns_v5 + Loyalsoldier/v2ray-rules-dat
-# ============================================================
+FROM golang:1.26.10-bookworm AS builder
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 
-FROM irinesistiana/mosdns:v5.3.4
-LABEL maintainer="mosdns-v5"
+WORKDIR /src/mosdns
+RUN git clone --depth 1 --branch v5.3.4 https://github.com/IrineSistiana/mosdns.git . \
+    && test "$(git rev-parse HEAD)" = b7323188bab1ea742538aeccb31b692bc4967d1b
+COPY build/ipv4_only*.go ./plugin/executable/sequence/
+RUN go get golang.org/x/net@v0.62.0 github.com/quic-go/quic-go@v0.59.1 \
+    && go test ./plugin/executable/sequence -run '^TestIPv4Only' \
+    && go build -trimpath -ldflags '-s -w -X main.version=v5.3.4-soc' -o /out/mosdns .
 
-# 安装 dcron（轻量 cron，~100KB）+ curl（下载规则文件）+ tzdata（时区支持）
-RUN apk add --no-cache dcron curl tzdata
+WORKDIR /src/v2dat
+RUN git init . \
+    && git fetch --depth 1 https://github.com/urlesistiana/v2dat.git 47b8ee51fb528e11e1a83453b7e767a18d20d1f7 \
+    && git checkout --detach FETCH_HEAD \
+    && go get google.golang.org/protobuf@v1.36.11 \
+    && go build -trimpath -ldflags '-s -w' -o /out/v2dat .
 
-COPY ./config.yaml /etc/mosdns/config.yaml
-COPY ./dat_exec.yaml /etc/mosdns/dat_exec.yaml
-COPY ./dns.yaml /etc/mosdns/dns.yaml
-COPY ./entrypoint.sh /entrypoint.sh
-COPY ./update-rules.sh /usr/local/bin/update-rules.sh
-COPY ./crontab /etc/crontabs/root
-COPY ./dat /etc/mosdns/dat
+FROM alpine:3.24.4
+RUN apk add --no-cache ca-certificates curl dcron gettext-envsubst tzdata util-linux-misc
 
-RUN chmod a+x /entrypoint.sh /usr/local/bin/update-rules.sh
+COPY --from=builder /out/mosdns /out/v2dat /usr/local/bin/
+COPY config/config.yaml config/dat_exec.yaml config/dns.yaml.tpl /etc/mosdns/
+COPY config/crontab /etc/crontabs/root
+COPY --chmod=755 scripts/update-rules.sh /usr/local/bin/update-rules.sh
+COPY --chmod=755 entrypoint.sh /entrypoint.sh
 
-VOLUME /etc/mosdns
+ARG RULES_RELEASE=202611172204
+RUN RULES_DATA_DIR=/usr/share/mosdns-rules /usr/local/bin/update-rules.sh "$RULES_RELEASE"
+
 EXPOSE 53/udp 53/tcp
-ENTRYPOINT [ "/entrypoint.sh" ]
+ENTRYPOINT ["/entrypoint.sh"]

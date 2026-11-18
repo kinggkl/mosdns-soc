@@ -9,8 +9,8 @@ Production-ready [mosdns v5.3.4](https://github.com/IrineSistiana/mosdns) deploy
 ```bash
 git clone https://github.com/kinggkl/mosdns-soc.git
 cd mosdns-soc
-cp .env.example .env              # Edit .env to set ECS_PRESET (optional)
-make deploy                       # Download rules + build + start
+cp .env.example .env              # Optional configuration
+make deploy                       # Build, verify bundled rules, and start
 ```
 
 ## Split-DNS Architecture
@@ -18,7 +18,7 @@ make deploy                       # Download rules + build + start
 ```
 DNS Request → :53
   ├─ pre_sequence (preprocessing)
-  │   qtype65 → reject | invalid qname → reject | PTR/ANY → foreign | private IP → LAN
+  │   AAAA/SVCB → empty | HTTPS → reject | invalid qname → reject | PTR/ANY → foreign | private IP → LAN
   └─ main_sequence (routing)
       ad → reject NXDOMAIN (µs-level)
       cache_wan (128K) → hit → accept
@@ -53,7 +53,7 @@ DNS Request → :53
 | Anti-pollution | `resp_ip` domestic/foreign IP verification + `drop_resp` |
 | ECS optimization | Configurable `ECS_PRESET` (via `.env`) |
 | Ad blocking | 173K rules (`geosite_category-ads-all`) |
-| Multi-upstream | DoH + DoT `concurrent:3` (IPv4 only) |
+| Multi-upstream | DoH + DoT `concurrent:3` |
 | Dual cache | LAN 8K + WAN 128K, lazy TTL 86400s |
 | TTL grading | pre=3600s / main=300s |
 | Config split | 3-file `include` architecture |
@@ -62,6 +62,7 @@ DNS Request → :53
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `DNS_LISTEN` | `:53` | DNS listen address and port |
 | `ECS_PRESET` | (empty) | Domestic ECS preset IP, leave empty to disable |
 | `LOG_LEVEL` | `debug` | Log level |
 | `CACHE_WAN_SIZE` | `131072` | WAN cache size |
@@ -70,7 +71,7 @@ DNS Request → :53
 
 ```bash
 make test           # Functional tests
-make update-rules   # Update rule files and rebuild
+make update-rules   # Update rules and reload the container
 make clean          # Stop and clean up
 
 # View logs
@@ -114,11 +115,15 @@ mosdns-soc/
 
 ## Rule Updates
 
-Rules sourced from [Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat), unpacked via v2dat into 6 categories. Update periodically:
+The image contains a validated seed release of [Loyalsoldier rules](https://github.com/Loyalsoldier/v2ray-rules-dat). The container checks daily at 03:00 Asia/Shanghai time. It verifies both asset checksums and unpacks all six rule files before switching the active snapshot. The previous snapshot is retained. For a manual update, run:
 
 ```bash
 make update-rules
 ```
+
+## IPv6 policy
+
+AAAA and SVCB queries return NOERROR with an empty answer. HTTPS queries return NXDOMAIN. Other responses are filtered for AAAA, SVCB, and HTTPS records across all record sections, including ANY responses. A and PTR still use the existing routing. Enabling IPv6 requires an explicit policy change.
 
 ## Benchmark (2026-05-13)
 

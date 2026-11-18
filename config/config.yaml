@@ -3,22 +3,23 @@
 # ============================================================
 
 log:
-  level: debug
+  level: ${LOG_LEVEL}
 
 api:
   http: "0.0.0.0:8080"
 
 include:
   - /etc/mosdns/dns.yaml
-  - /etc/mosdns/dat_exec.yaml
+  - /run/mosdns/dat_exec.yaml
 
 plugins:
   - type: udp_server
     args:
       entry: sequence
-      listen: :53
+      listen: "${DNS_LISTEN}"
 
   - type: tcp_server
     args:
       entry: sequence
-      listen: :53
+      listen: "${DNS_LISTEN}"
+

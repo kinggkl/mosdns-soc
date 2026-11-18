@@ -10,7 +10,7 @@
 git clone https://github.com/kinggkl/mosdns-soc.git
 cd mosdns-soc
 cp .env.example .env              # 编辑 .env 填入 ECS_PRESET（可选）
-make deploy                       # 下载规则 + 构建 + 启动
+make deploy                       # 构建镜像并启动
 ```
 
 ## 分流架构
@@ -57,6 +57,12 @@ DNS Request → :53
 | 双缓存 | LAN 8K + WAN 128K，lazy TTL 86400s |
 | TTL 分级 | pre=3600s / main=300s |
 | 配置拆分 | `include` 三文件架构 |
+
+## IPv6 策略
+
+默认不向客户端返回 IPv6 地址。AAAA 和 SVCB 查询返回 NOERROR 空答案，HTTPS 查询返回 NXDOMAIN。其他查询的响应会过滤各区段的 AAAA、SVCB 和 HTTPS 记录，包括 ANY 响应。A 和 PTR 查询仍走原分流。启用 IPv6 需要先确认并显式修改策略。
+
+镜像内置经过校验的规则。运行时每天北京时间 03:00 检查更新，完整校验并解包六类规则后才切换，保留上一版。也可以运行 `make update-rules` 手动更新。
 
 ## 环境变量 (`.env`)
 

@@ -8,46 +8,46 @@ plugins:
   - tag: geoip_private
     type: ip_set
     args:
-      files: ["/etc/mosdns/dat/geoip_private.txt"]
+      files: ["/etc/mosdns/dat/current/geoip_private.txt"]
 
   - tag: geoip_cn
     type: ip_set
     args:
-      files: ["/etc/mosdns/dat/geoip_cn.txt"]
+      files: ["/etc/mosdns/dat/current/geoip_cn.txt"]
 
   - tag: geosite_cn
     type: domain_set
     args:
-      files: ["/etc/mosdns/dat/geosite_cn.txt"]
+      files: ["/etc/mosdns/dat/current/geosite_cn.txt"]
 
   - tag: geosite_ads_all
     type: domain_set
     args:
-      files: ["/etc/mosdns/dat/geosite_category-ads-all.txt"]
+      files: ["/etc/mosdns/dat/current/geosite_category-ads-all.txt"]
 
   - tag: geosite_gfw
     type: domain_set
     args:
-      files: ["/etc/mosdns/dat/geosite_gfw.txt"]
+      files: ["/etc/mosdns/dat/current/geosite_gfw.txt"]
 
   - tag: geosite_location_not_cn
     type: domain_set
     args:
-      files: ["/etc/mosdns/dat/geosite_geolocation-!cn.txt"]
+      files: ["/etc/mosdns/dat/current/geosite_geolocation-!cn.txt"]
 
   # ── 双缓存 ──
   - tag: cache_lan
     type: cache
     args:
-      size: 8192
+      size: ${CACHE_LAN_SIZE}
       lazy_cache_ttl: 86400
 
   - tag: cache_wan
     type: cache
     args:
-      size: 131072
+      size: ${CACHE_WAN_SIZE}
       lazy_cache_ttl: 86400
-      dump_file: ./cache.dump
+      dump_file: /etc/mosdns/cache/cache.dump
       dump_interval: 120
 
   # ── TTL 分级 ──
@@ -111,10 +111,6 @@ plugins:
       - exec: $dns_nocn
 
   # ── 拒绝处理 ──
-  - tag: reject_qtype65
-    type: sequence
-    args: [{ exec: query_summary reject_qtype65 }, { exec: $reject_3 }]
-
   - tag: reject_null_domain
     type: sequence
     args: [{ exec: query_summary reject_null_domain }, { exec: $reject_3 }]
@@ -127,8 +123,6 @@ plugins:
   - tag: pre_sequence
     type: sequence
     args:
-      - matches: "qtype 65"
-        exec: $reject_qtype65
       - matches: "qname keyword::"
         exec: $reject_null_domain
       - matches: "qtype 12"
@@ -164,5 +158,7 @@ plugins:
   - tag: sequence
     type: sequence
     args:
+      - exec: ipv4_only
       - exec: $pre_sequence
       - exec: $main_sequence
+

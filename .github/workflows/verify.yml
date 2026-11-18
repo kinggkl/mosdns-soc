@@ -1,0 +1,44 @@
+name: Verify DNS deployment
+
+on:
+  push:
+    branches: [main, fix/deployment-ipv4-dependencies]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DNS_LISTEN: 127.0.0.1:1053
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dig
+        run: command -v dig || (sudo apt-get update && sudo apt-get install -y dnsutils)
+      - name: Validate Compose and build the image
+        run: |
+          docker compose config --quiet
+          docker compose build --pull mosdns
+      - name: Start and test UDP and TCP
+        run: |
+          docker compose up -d mosdns
+          for attempt in $(seq 1 30); do
+            if sh scripts/test.sh 127.0.0.1 1053 --ipv4-policy; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Check seeded rules
+        run: |
+          docker compose exec -T mosdns sh -ec '
+            test -s /etc/mosdns/dat/current/version
+            test "$(find -L /etc/mosdns/dat/current -name "*.txt" | wc -l)" -eq 6
+          '
+      - name: Print logs
+        if: failure()
+        run: docker compose logs mosdns
+      - name: Stop service
+        if: always()
+        run: docker compose down

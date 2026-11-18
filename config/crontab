@@ -1,3 +1,2 @@
-# dcron crontab for mosdns container
-# 每天凌晨 3:00 检查并更新 Loyalsoldier 规则
-0 3 * * * /usr/local/bin/update-rules.sh
+# Check the rule release daily at 03:00 Asia/Shanghai.
+0 3 * * * /usr/local/bin/update-rules.sh --restart >>/proc/1/fd/1 2>>/proc/1/fd/2
