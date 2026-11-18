@@ -121,6 +121,10 @@ The image contains a validated seed release of [Loyalsoldier rules](https://gith
 make update-rules
 ```
 
+## Image maintenance
+
+The image builds the pinned mosdns v5.3.4 source with targeted Go dependency updates and packages it on Alpine 3.24. It builds v2dat from a pinned source commit with an updated protobuf dependency. GitHub Actions builds the Compose image, checks DNS over UDP and TCP, and reports known Go vulnerabilities found in both resulting binaries.
+
 ## IPv6 policy
 
 AAAA and SVCB queries return NOERROR with an empty answer. HTTPS queries return NXDOMAIN. Other responses are filtered for AAAA, SVCB, and HTTPS records across all record sections, including ANY responses. A and PTR still use the existing routing. Enabling IPv6 requires an explicit policy change.

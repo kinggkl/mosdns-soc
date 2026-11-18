@@ -6,6 +6,7 @@ RUN git clone --depth 1 --branch v5.3.4 https://github.com/IrineSistiana/mosdns.
     && test "$(git rev-parse HEAD)" = b7323188bab1ea742538aeccb31b692bc4967d1b
 COPY build/ipv4_only*.go ./plugin/executable/sequence/
 RUN go get golang.org/x/net@v0.62.0 github.com/quic-go/quic-go@v0.59.1 \
+    github.com/klauspost/compress@v1.20.2 github.com/go-chi/chi/v5@v5.2.5 github.com/miekg/dns@v1.1.72 \
     && go test ./plugin/executable/sequence -run '^TestIPv4Only' \
     && go build -trimpath -ldflags '-s -w -X main.version=v5.3.4-soc' -o /out/mosdns .
 
